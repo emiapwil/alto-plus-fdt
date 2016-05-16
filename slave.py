@@ -3,6 +3,7 @@
 import os.path
 import logging
 from daemonize import Daemonize
+import re
 
 def pyfdt_info(msg):
     print("[PyFDT]: %s" % msg)
@@ -44,11 +45,6 @@ logfile = None
 analyzer = None
 stat = {}
 
-UUID_PATTERN= "[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}"
-IPV4_PATTERN= "[0-9\.]+"
-PORT_PATTERN= "[0-9]+"
-SESSION_PATTERN = ".*FDTSession \( (%s) \).*Socket\[addr=/(%s),port=(%s),localport=(%s)\].*"
-
 def clean_up():
     if logfile is not None:
         logfile.close()
@@ -56,8 +52,65 @@ def clean_up():
     if process is not None:
         process.kill()
 
+UUID_PATTERN="[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}"
+IPV4_PATTERN="[0-9\.]+"
+PORT_PATTERN="[0-9]+"
+
+START_PATTERN=".*FDTSession \( (%s) \).*\[addr=/(%s),port=(%s),localport=(%s)\].*started"
+END_PATTERN=".*(%s).*finished (\w+).*"
+
+def analyze_session_start(line):
+    p =  START_PATTERN % (UUID_PATTERN, IPV4_PATTERN, PORT_PATTERN, PORT_PATTERN)
+    m = re.search(p, line)
+
+    if m is not None and len(m.groups()) == 4:
+        uuid = m.group(1)
+
+        remote_ip = m.group(2)
+        remote_port = m.group(3)
+
+        local_ip = fdt_server_cfg['ip']
+        local_port = m.group(4)
+
+        client = {"ip": remote_ip, "port": remote_port}
+        server = {"ip": local_ip, "port": local_port}
+        status = "running"
+        stat[uuid] = { "client": client, "server": server, "status": status }
+
+def analyze_session_end(line):
+    p = END_PATTERN % (UUID_PATTERN)
+    m = re.search(p, line)
+
+    if m is not None:
+        uuid = m.group(1)
+        result = m.group(2)
+        if uuid in stat:
+            stat[uuid]["status"] = "successful" if result == 'OK' else "failed"
+
+BANDWIDTH_PATTERN="[0-9]*\.[0-9]* [MKG]b/s"
+TASK_BANDWIDTH_PATTERN="(.*)Net Out: (%s).*Avg: (%s)(.*)"
+UUID_TASK_BANDWIDTH="(%s)Net Out: (%s).*Avg: (%s)"
+
+def analyze_process(line):
+    global stat
+
+    p = TASK_BANDWIDTH_PATTERN % (BANDWIDTH_PATTERN, BANDWIDTH_PATTERN)
+
+    m = re.search(p, line)
+    if m is not None and len(m.groups()) >= 3:
+        uuid = m.group(1)
+        net = m.group(2)
+        avg = m.group(3)
+
+        if re.search(UUID_PATTERN, uuid) is None:
+            uuid = [k for k in stat.keys()][0]
+
+        stat[uuid]["speed"] = {"net": net, "avg": avg}
+
+        if len(m.groups()) == 4:
+            stat[uuid]["progress"] = m.group(4)
+
 def analyze_fdt_log():
-    import re
     global process, analyzer, logfile, stat
 
     try:
@@ -65,28 +118,11 @@ def analyze_fdt_log():
         for line in process.stdout:
             logfile.write(line)
 
-            p =  SESSION_PATTERN % (UUID_PATTERN, IPV4_PATTERN, PORT_PATTERN, PORT_PATTERN)
             line = line.decode("utf-8")
-            m = re.search(p, line)
-            if m is not None and len(m.groups()) == 4:
-                uuid = m.group(1)
 
-                remote_ip = m.group(2)
-                remote_port = m.group(3)
-
-                local_ip = fdt_server_cfg['ip']
-                local_port = m.group(4)
-
-                if re.search('started', line) is not None:
-                    client = {"ip": remote_ip, "port": remote_port}
-                    server = {"ip": local_ip, "port": local_port}
-                    status = "running"
-                    stat[uuid] = { "client": client, "server": server, "status": status }
-                elif re.search('finished', line) is not None:
-                    if uuid in stat:
-                        stat[uuid]["status"] = "finished"
-
-                print(line)
+            analyze_session_start(line)
+            analyze_process(line)
+            analyze_session_end(line)
 
     except Exception as e:
         logfile.close()
@@ -141,8 +177,17 @@ def get_fdt_status():
     return stat
 
 if __name__=='__main__':
+    import sys, argparse
+
+    parser = argparse.ArgumentParser(description='Python wrapper for FDT server')
+    parser.add_argument('--port', help='Specify local IP to be used',
+                        type=int, default=6666)
+    parser.add_argument('ip', help='The IP address for the server')
+
+    args = parser.parse_args(sys.argv[1:])
+
     try:
-        fdt_server_cfg["ip"] = "127.0.0.1"
-        run(host='localhost', port=6666, debug=True)
+        fdt_server_cfg["ip"] = args.ip
+        run(host=args.ip, port=args.port, debug=True)
     except Exception as e:
         clean_up()
