@@ -164,7 +164,7 @@ def add_task():
         r = requests.post(url, json.dumps(post_data))
         if r.status_code == 200:
             task = r.json()
-            tasks[task["uuid"]] = {}
+            tasks[task["uuid"]] = {"files": files}
             task_meta[task["uuid"]] = data
     except Exception as e:
         raise e

@@ -28,7 +28,11 @@ PORT_PATTERN="[0-9]+"
 START_PATTERN=".*FDTSession \( (%s) \).*\[addr=/(%s),port=(%s),localport=(%s)\].*started"
 END_PATTERN=".*(%s).*finished (\w+).*"
 
+last_uuid = None
+
 def analyze_session_start(line):
+    global stat, last_uuid
+
     p =  START_PATTERN % (UUID_PATTERN, IPV4_PATTERN, PORT_PATTERN, PORT_PATTERN)
     m = re.search(p, line)
 
@@ -44,7 +48,13 @@ def analyze_session_start(line):
         client = {"ip": remote_ip, "port": remote_port}
         server = {"ip": local_ip, "port": local_port}
         status = "running"
-        stat[uuid] = { "client": client, "server": server, "status": status }
+
+        if uuid not in stat:
+            stat[uuid] = {}
+        last_uuid = uuid
+        stat[uuid]["client"] = client
+        stat[uuid]["server"] = server
+        stat[uuid]["status"] = status
 
 def analyze_session_end(line):
     p = END_PATTERN % (UUID_PATTERN)
@@ -55,6 +65,25 @@ def analyze_session_end(line):
         result = m.group(2)
         if uuid in stat:
             stat[uuid]["status"] = "successful" if result == 'OK' else "failed"
+
+LAST_UUID_PATTERN="UUID.*\[(%s)\]" % UUID_PATTERN
+FILE_SIZE_PATTERN="fileSizes.*\[([0-9]+)\]"
+
+def analyze_size(line):
+    global last_uuid, stat
+
+    m = re.search(FILE_SIZE_PATTERN, line)
+
+    if last_uuid is None:
+        return
+
+    if m is not None:
+        print(line)
+        file_size = int(m.group(1))
+        if last_uuid not in stat:
+            stat[last_uuid] = {}
+        stat[last_uuid]["size"] = file_size
+        
 
 BANDWIDTH_PATTERN="[0-9]*\.[0-9]* [MKG]b/s"
 TASK_BANDWIDTH_PATTERN="(.*)Net Out: (%s).*Avg: (%s)(.*)"
@@ -72,7 +101,7 @@ def analyze_process(line):
         avg = m.group(3)
 
         if re.search(UUID_PATTERN, uuid) is None:
-            uuid = [k for k in stat.keys()][0]
+            uuid = [k for k in stat.keys() if stat[k]["status"] == "running"][0]
 
         stat[uuid]["speed"] = {"net": net, "avg": avg}
 
@@ -92,6 +121,7 @@ def analyze_fdt_log():
 
             analyze_session_start(line)
             analyze_process(line)
+            analyze_size(line)
             analyze_session_end(line)
 
     except Exception as e:

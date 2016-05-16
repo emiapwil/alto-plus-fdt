@@ -3,14 +3,19 @@
 MASTER_IP=$1
 SERVER_IP=$2
 CLIENT_IP=$3
+DIR=$4
+shift 4
 
 FILES=\"$(echo $* | sed 's/ /\",\"/g')\"
 
+echo $DIR
 echo $FILES
 
 CLIENT_INFO='{"hostname":"'$CLIENT_IP'"}'
 SERVER_INFO='{"hostname":"'$SERVER_IP'"}'
 
-DATA_STR='{"server":'$CLIENT_INFO',"client":'$CLIENT_INFO',"files":['$FILES'],"target":"/home/emiapwil/workspace/alto-plus-fdt/"}'
+DATA_STR='{"server":'$SERVER_INFO',"client":'$CLIENT_INFO',"files":['$FILES'],"target":"'$DIR'"}'
 
-curl -X POST --data-raw $DATA_STR 'http://'$MASTER_IP':6665/task/submit'
+echo $DATA_STR | python -m json.tool
+
+curl -X POST -d $DATA_STR 'http://'$MASTER_IP':6665/task/submit'

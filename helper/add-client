@@ -1,12 +1,9 @@
 #!/bin/bash
 
-IP=$1
-if [ $2 ]; then
-	PORT=$2
-else
-	PORT=6665
-fi
+MASTER_IP=$1
+CLIENT_IP=$2
+PORT=6665
 
-DATA_STR='{"hostname":"'$IP'","port":6667}'
+DATA_STR='{"hostname":"'$CLIENT_IP'","port":6667}'
 
-curl -X POST --data-raw $DATA_STR "http://"$IP":"$PORT"/client/add"
+curl -X POST -d $DATA_STR "http://"$MASTER_IP":"$PORT"/client/add"

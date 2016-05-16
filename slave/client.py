@@ -4,6 +4,7 @@ from bottle import route, run, request, abort
 from subprocess import Popen, STDOUT, PIPE
 import re
 import json
+import threading
 
 from .common import install_fdt, get_fdt_cfg, fdt_jar_name, data_dir
 
@@ -12,6 +13,12 @@ tasks = {}
 
 UUID_PATTERN="[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}"
 INIT_PATTERN=".*(%s) initialized" % UUID_PATTERN
+
+def debug(process):
+    for line in process.stdout:
+        line = line.decode("utf-8")
+        print(line)
+    return 0
 
 def handle(task, mode, target):
     global tasks, fdt_client_cfg
@@ -35,10 +42,14 @@ def handle(task, mode, target):
         for line in process.stdout:
             line = line.decode("utf-8")
             m = re.search(INIT_PATTERN, line)
+            print(line)
             if m is not None:
                 uuid = m.group(1)
 
                 tasks[uuid] = task
+                debugging = lambda : debug(process)
+                thread = threading.Thread(target=debugging)
+                thread.start()
                 return {"uuid": uuid}
         abort(400, "Failed to start transfer")
     except Exception as e:
