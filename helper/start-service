@@ -1,0 +1,10 @@
+#!/bin/bash
+
+IP=$1
+if [ $2 ] ; then
+	PORT=$2
+else
+	PORT=6666
+fi
+
+curl "http://"$IP"\@"$PORT"/start"

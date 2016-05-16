@@ -1,51 +1,20 @@
 #!/bin/env python3
 
-import os.path
 import logging
 from daemonize import Daemonize
 import re
-
-def pyfdt_info(msg):
-    print("[PyFDT]: %s" % msg)
-
-def base_dir():
-    import os
-    return os.path.dirname(os.path.realpath(__file__)) + "/"
-
-def lib_dir():
-    return base_dir() + "lib/"
-
-def run_dir():
-    return base_dir() + "run/"
-
-def fdt_jar_name():
-    return lib_dir() + "fdt.jar"
-
-def pid_file_name():
-    return run_dir() + "pyfdt.pid"
-
-def log_file_name():
-    return run_dir() + "pyfdt.log"
-
-def install_fdt():
-    os.makedirs(lib_dir(), exist_ok = True)
-
-    if os.path.isfile(fdt_jar_name()):
-        return
-
-    import urllib.request
-    source_url = "http://monalisa.cern.ch/FDT/lib/fdt.jar"
-    urllib.request.urlretrieve(source_url, fdt_jar_name())
-
 from bottle import route, run, abort
 
-fdt_server_cfg = { 'port': 54321 }
+from .common import log_file_name, fdt_jar_name, install_fdt, get_fdt_cfg, data_dir
+
+fdt_server_cfg = {}
 process = None
 logfile = None
 analyzer = None
 stat = {}
 
 def clean_up():
+    global logfile, process
     if logfile is not None:
         logfile.close()
         logfile = None
@@ -113,6 +82,7 @@ def analyze_process(line):
 def analyze_fdt_log():
     global process, analyzer, logfile, stat
 
+    stat = {}
     try:
         logfile = open(log_file_name(), "wb")
         for line in process.stdout:
@@ -132,9 +102,12 @@ def analyze_fdt_log():
 
 @route('/start')
 def start_fdt():
+    global process
+
     port = fdt_server_cfg['port']
 
-    install_fdt()
+    if process is not None:
+        return
 
     fdt_jar = fdt_jar_name()
     cmd = ["java"]
@@ -146,11 +119,12 @@ def start_fdt():
     import threading
 
     try:
-        global process
         process = Popen(cmd, stderr=STDOUT, stdout=PIPE)
 
         analyzer = threading.Thread(target=analyze_fdt_log)
         analyzer.start()
+
+        return data_dir()
     except Exception as e:
         clean_up()
         raise e
@@ -177,17 +151,14 @@ def get_fdt_status():
     return stat
 
 if __name__=='__main__':
-    import sys, argparse
-
-    parser = argparse.ArgumentParser(description='Python wrapper for FDT server')
-    parser.add_argument('--port', help='Specify local IP to be used',
-                        type=int, default=6666)
-    parser.add_argument('ip', help='The IP address for the server')
-
-    args = parser.parse_args(sys.argv[1:])
+    hostname, ip, port = get_fdt_cfg("sever", 6666)
 
     try:
-        fdt_server_cfg["ip"] = args.ip
-        run(host=args.ip, port=args.port, debug=True)
+        install_fdt()
+
+        fdt_server_cfg = { "ip": ip, "port": 54321 }
+
+        run(host=hostname, port=port, debug=True)
     except Exception as e:
         clean_up()
+        raise e

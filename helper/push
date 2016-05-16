@@ -1,0 +1,12 @@
+#!/bin/bash
+
+FILES=\"$(echo $* | sed 's/ /\",\"/g')\"
+
+echo $FILES
+
+DATA_STR='{"server":{"ip":"localhost","port":54321},"files":['$FILES'],"server_dir":"/home/emiapwil/workspace/alto-plus-fdt/"}'
+
+echo $DATA_STR > tmp
+
+curl -X POST --data-raw $DATA_STR http://localhost:6667/push
+rm -f tmp
