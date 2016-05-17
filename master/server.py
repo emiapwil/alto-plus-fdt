@@ -84,6 +84,7 @@ def process_fdt(server, port):
     server['port'] = port
 
     key = "%s:%d" % (hostname, port)
+    return key
 
 @route("/list")
 def get_all():
