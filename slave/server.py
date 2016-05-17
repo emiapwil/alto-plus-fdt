@@ -3,6 +3,7 @@
 import logging
 from daemonize import Daemonize
 import re
+import time
 from bottle import route, run, abort
 
 from .common import log_file_name, fdt_jar_name, install_fdt, get_fdt_cfg, data_dir
@@ -55,6 +56,8 @@ def analyze_session_start(line):
         stat[uuid]["client"] = client
         stat[uuid]["server"] = server
         stat[uuid]["status"] = status
+        stat[uuid]["start_time"] = time.strftime('%X %x UTC%z')
+        stat[uuid]["progress"] = "0%"
 
 def analyze_session_end(line):
     p = END_PATTERN % (UUID_PATTERN)
@@ -65,6 +68,8 @@ def analyze_session_end(line):
         result = m.group(2)
         if uuid in stat:
             stat[uuid]["status"] = "successful" if result == 'OK' else "failed"
+            stat[uuid]["progress"] = "100% (0s)"
+            stat[uuid]["finish_time"] = time.strftime('%X %x UTC%z')
 
 LAST_UUID_PATTERN="UUID.*\[(%s)\]" % UUID_PATTERN
 FILE_SIZE_PATTERN="fileSizes.*\[([0-9]+)\]"
@@ -83,7 +88,7 @@ def analyze_size(line):
         if last_uuid not in stat:
             stat[last_uuid] = {}
         stat[last_uuid]["size"] = file_size
-        
+
 
 BANDWIDTH_PATTERN="[0-9]*\.[0-9]* [MKG]b/s"
 TASK_BANDWIDTH_PATTERN="(.*)Net Out: (%s).*Avg: (%s)(.*)"
