@@ -85,6 +85,15 @@ def process_fdt(server, port):
 
     key = "%s:%d" % (hostname, port)
 
+@route("/list")
+def get_all():
+    global servers, clients
+
+    data = {}
+    data["servers"] = [servers[k]["ip"] for k in servers]
+    data["clients"] = [clients[k]["ip"] for k in clients]
+    return data
+
 @route("/server/add", method='POST')
 def add_server():
     global servers
